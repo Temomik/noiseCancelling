@@ -1,13 +1,17 @@
 import sounddevice as sd
 from scipy.io.wavfile import write
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+
+#pip install -r req.txt
 
 fs = 44100  # Sample rate
-seconds = 3  # Duration of recording
-windowSize = 1024
+seconds = 4  # Duration of recording
+windowSize = 1023
 halfWindowSize = windowSize//2
 globalRecord = []
+trashHold = 0.03
+
 def toSingleList(doubleList):
     tmpRecord = doubleList
     out = []
@@ -23,7 +27,11 @@ def getWidnowVoice():
     outArray = []
     for i in range(0,len(record)//windowSize*windowSize-halfWindowSize,halfWindowSize):
         outArray.append(record[i:int(i + windowSize)])
-    return np.hanning(windowSize) * outArray
+    hanning = np.hanning(windowSize)
+    outArray = outArray[:-1]
+    for i in range(len(outArray)):
+        outArray[i] *= hanning
+    return outArray
 
 def getParticles(record):
     outArray = []
@@ -34,67 +42,37 @@ def getParticles(record):
 def restore(arr):
     out = np.zeros(len(arr) * halfWindowSize + halfWindowSize)
     index = 0
-    for i in range(0,len(out) - halfWindowSize ,halfWindowSize):
+    for i in range(0,len(out) - windowSize  ,halfWindowSize):
         out[i:int(i + windowSize)] += arr[index]
         index +=1
     return out
 
 out = getWidnowVoice()
-print(len(out))
 newOut = restore(out)
-print(len(newOut))
-print(len(globalRecord))
+fftArr = []
+[fftArr.append(np.fft.fft(i)) for i in out]
+fftArrAbs = np.abs(fftArr)
+fftArrPhase = np.angle(fftArr)
 
-# s = range(44100)
-# p = getParticles(s)
-# p = np.hanning(windowSize) * p 
-# r = restore(p)
+energy = []
+[energy.append(np.mean(i)) for i in fftArrAbs]
 
-# print(len(s))
-# print(len(p[0]))
-# print(len(r))
+noiseFftAbs = np.zeros(windowSize)
+for i in range(len(fftArrAbs)):
+    if energy[i] <= trashHold:
+        noiseFftAbs = (noiseFftAbs + fftArrAbs[i])/2
+    fftArrAbs[i] -= noiseFftAbs
 
 
-# plt.subplot(311)
-# plt.plot(s[0:len(r)]-r)
-# plt.subplot(312)
-# plt.plot(r)
-# plt.subplot(313)
-# plt.plot(s[0:len(r)])
-# plt.show()
+fftArr = fftArrAbs * np.exp(1j * fftArrPhase)
 
-# plt.plot(globalRecord[0:len(newOut)]-newOut)
-# plt.subplot(311)
-# plt.plot(globalRecord[0:len(newOut)]-newOut)
-# plt.subplot(312)
-# plt.plot(newOut)
-# plt.subplot(313)
-# plt.plot(globalRecord[0:len(newOut)])
-# plt.show()
 write('input.wav', fs, globalRecord)  # Save as WAV file 
-write('output.wav', fs, np.array(newOut))  # Save as WAV file 
+write('output.wav', fs, restore(np.real(np.fft.ifft(fftArr))))  # Save as WAV file 
 
-# kek = np.hanning(13)
-# [print(i[2]) for i in out]
-# print("start")
-# noice = sd.rec(int(seconds * fs), samplerate=fs, channels=1)
-# sd.wait()  # Wait until recording is finished
-# print("stop")
+plt.subplot(211)
+plt.title("orig")
+plt.plot(globalRecord)
+plt.subplot(212)
+plt.plot((restore(np.real(np.fft.ifft(fftArr)))))
+plt.show()
 
-# print("start")
-# myrecording = sd.rec(int(seconds * fs), samplerate=fs, channels=1)
-# sd.wait()  # Wait until recording is finished
-# print("stop")
-# write('iput.wav', fs, myrecording)  # Save as WAV file 
-# toSingleList(noice)
-# toSingleList(myrecording)
-
-# plt.subplot(311)
-# plt.plot(np.fft.fft(noice))
-# plt.subplot(312)
-# plt.plot(np.fft.fft(myrecording))
-# plt.subplot(313)
-# plt.plot(np.fft.ifft(np.fft.fft(myrecording) - np.fft.fft(noice)))
-# plt.show()
-
-# write('output.wav', fs, np.abs(np.fft.ifft(np.fft.fft(myrecording).real - np.fft.fft(noice).real)))  # Save as WAV file 
